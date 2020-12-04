@@ -1,0 +1,67 @@
+library(tidyverse)
+library(gridExtra)
+library(psych)
+library(lm.beta)
+library(lmtest)
+library(car)
+library(sandwich)
+
+paindata = read.csv("https://tinyurl.com/ha-dataset1")
+view(paindata)
+paindata1 <- paindata %>% 
+  slice(-c(93)) 
+
+coef_table = function(model) {
+  require(lm.beta)
+  mod_sum = summary(model)
+  mod_sum_p_values = as.character(round(mod_sum$coefficients[,
+                                                             4], 3))
+  mod_sum_p_values[mod_sum_p_values != "0" & mod_sum_p_values !=
+                     "1"] = substr(mod_sum_p_values[mod_sum_p_values != "0" &
+                                                      mod_sum_p_values != "1"], 2, nchar(mod_sum_p_values[mod_sum_p_values !=
+                                                                                                            "0" & mod_sum_p_values != "1"]))
+  mod_sum_p_values[mod_sum_p_values == "0"] = "<.001"
+  mod_sum_table = cbind(as.data.frame(round(cbind(coef(model),
+                                                  confint(model), c(0, lm.beta(model)$standardized.coefficients[c(2:length(model$coefficients))])),
+                                            2)), mod_sum_p_values)
+  names(mod_sum_table) = c("b", "95%CI lb", "95%CI ub", "Std.Beta",
+                           "p-value")
+  mod_sum_table["(Intercept)", "Std.Beta"] = "0"
+  return(mod_sum_table)
+}
+
+mod_br = lm(pain ~ age + sex + STAI_trait + pain_cat + mindfulness +
+              cortisol_serum + weight + IQ + household_income, data = paindata1)
+summary(mod_br)
+mod_br %>%  plot(which = 4)  
+mod_br %>%  plot (which = 3) 
+mod_br %>%  bptest() 
+mod_br %>%  plot(which = 2)
+mod_br %>%  vif()
+AIC(mod_br)
+
+mod_backwards = step(mod_br, direction = "backward")
+summary(mod_backwards)
+
+modfinal <- lm((pain ~ age + sex + STAI_trait + pain_cat + mindfulness + 
+                  cortisol_saliva), data = paindata1)
+
+anova(mod_br, mod_backwards)
+anova(modfinal,mod_backwards)
+summary(modfinal)$adj.r.squared
+summary(mod_backwards)$adj.r.squared
+AIC(modfinal)
+AIC(mod_backwards) 
+coef_table(mod_backwards)
+
+
+newpaindata = read.csv("https://tinyurl.com/ha-dataset2")
+
+test_set = newpaindata[1:100, ]
+pred_pain <- predict(modfinal, test_set)
+pred_pain_bacwards <- predict(mod_backwards, test_set)
+
+RSS_test = sum((test_set[, "pain"] - pred_pain)^2)
+RSS_test_back = sum((test_set[, "pain"] - pred_pain_bacwards)^2)
+RSS_test
+RSS_test_back 
