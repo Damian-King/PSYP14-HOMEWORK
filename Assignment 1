@@ -1,0 +1,93 @@
+library(tidyverse)
+library(gridExtra)
+library(psych)
+library(lm.beta)
+library(lmtest)
+library(car)
+library(sandwich)
+
+
+coef_table = function(model) {
+  require(lm.beta)
+  mod_sum = summary(model)
+  mod_sum_p_values = as.character(round(mod_sum$coefficients[,
+                                                             4], 3))
+  mod_sum_p_values[mod_sum_p_values != "0" & mod_sum_p_values !=
+                     "1"] = substr(mod_sum_p_values[mod_sum_p_values != "0" &
+                                                      mod_sum_p_values != "1"], 2, nchar(mod_sum_p_values[mod_sum_p_values !=
+                                                                                                            "0" & mod_sum_p_values != "1"]))
+  mod_sum_p_values[mod_sum_p_values == "0"] = "<.001"
+  mod_sum_table = cbind(as.data.frame(round(cbind(coef(model),
+                                                  confint(model), c(0, lm.beta(model)$standardized.coefficients[c(2:length(model$coefficients))])),
+                                            2)), mod_sum_p_values)
+  names(mod_sum_table) = c("b", "95%CI lb", "95%CI ub", "Std.Beta",
+                           "p-value")
+  mod_sum_table["(Intercept)", "Std.Beta"] = "0"
+  return(mod_sum_table)
+}
+
+paindata = read.csv("https://tinyurl.com/ha-dataset1")
+  view(paindata) 
+  summary(paindata)
+
+paindata %>% 
+  describe()
+
+paindata1 <- paindata %>% 
+  slice(-c(93)) 
+  view(paindata1)
+  summary(paindata1)
+table1 <- table(paindata1$sex)
+table1
+
+fig1 = paindata1 %>% 
+  ggplot() +
+  aes(x = sex, y = pain) + 
+  geom_boxplot()
+
+fig2 = paindata1 %>% 
+  ggplot() +
+  aes(x = age, y = pain) +
+geom_violin()
+
+grid.arrange(fig1, fig2, nrow=1)
+
+mod1 <- lm(pain ~ age + sex,data = paindata1)
+mod1
+summary(mod1)
+  mod1 %>%  plot(which = 4) 
+  mod1 %>%  plot (which = 3) 
+  mod1 %>%  plot(which = 2)
+  mod1 %>%  bptest() 
+  mod1 %>%  vif()
+
+mod2 <- lm(pain ~ age + sex + STAI_trait + pain_cat + mindfulness + 
+             cortisol_saliva + cortisol_serum, data = paindata1) 
+mod2
+summary(mod2)
+mod2 %>%  plot(which = 4)
+mod2 %>%  plot(which = 3)
+mod2 %>%  bptest()
+mod2 %>%  plot(which =2)
+mod2 %>%  vif()
+
+modfinal <- lm((pain ~ age + sex + STAI_trait + pain_cat + mindfulness + 
+                  cortisol_saliva), data = paindata1)
+summary(modfinal)
+modfinal %>%  plot(which = 4)
+modfinal %>%  plot(which = 3)
+modfinal %>%  bptest()
+modfinal %>%  plot(which =2)
+modfinal %>%  vif()
+
+AIC(mod1)
+AIC(modfinal)
+anova(mod1, modfinal)
+confint(mod1)
+confint(modfinal) 
+
+table1 = coef_table(mod1)
+table2 = coef_table(modfinal)
+  table1
+  table2
+anova(mod1, modfinal)
