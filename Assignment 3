@@ -1,0 +1,107 @@
+library(tidyverse)
+library(gridExtra)
+library(psych)
+library(lm.beta)
+library(lmtest)
+library(car)
+library(sandwich)
+library(cAIC4)
+library(r2glmm)
+library(lme4)
+library(MuMIn)
+library(optimx)
+
+stdCoef.merMod <- function(object) {
+  sdy <- sd(getME(object,"y"))
+  sdx <- apply(getME(object,"X"), 2, sd)
+  sc <- fixef(object)*sdx/sdy
+  se.fixef <- coef(summary(object))[,"Std. Error"]
+  se <- se.fixef*sdx/sdy
+  return(data.frame(stdcoef=sc, stdse=se))
+}
+coef_table = function(model) {
+  require(lm.beta)
+  mod_sum = summary(model)
+  mod_sum_p_values = as.character(round(mod_sum$coefficients[,
+                                                             4], 3))
+  mod_sum_p_values[mod_sum_p_values != "0" & mod_sum_p_values !=
+                     "1"] = substr(mod_sum_p_values[mod_sum_p_values != "0" &
+                                                      mod_sum_p_values != "1"], 2, nchar(mod_sum_p_values[mod_sum_p_values !=
+                                                                                                            "0" & mod_sum_p_values != "1"]))
+  mod_sum_p_values[mod_sum_p_values == "0"] = "<.001"
+  mod_sum_table = cbind(as.data.frame(round(cbind(coef(model),
+                                                  confint(model), c(0, lm.beta(model)$standardized.coefficients[c(2:length(model$coefficients))])),
+                                            2)), mod_sum_p_values)
+  names(mod_sum_table) = c("b", "95%CI lb", "95%CI ub", "Std.Beta",
+                           "p-value")
+  mod_sum_table["(Intercept)", "Std.Beta"] = "0"
+  return(mod_sum_table)
+}
+
+paindata3 = read.csv("https://tinyurl.com/ha-dataset3")
+paindata4 = read.csv("https://tinyurl.com/ha-dataset4")
+
+view(paindata3)
+view(paindata4)
+
+int_plot = paindata3 %>% 
+ggplot() + 
+  aes(y = pain, x = pain_cat, color = hospital) + 
+  geom_point(size = 2) + 
+  geom_smooth(method = "lm", se = F, fullrange=TRUE)
+
+int_plot
+mod_fixed <- lm(pain ~ age + sex + STAI_trait + pain_cat + mindfulness + 
+            cortisol_saliva, data = paindata3)
+
+mod_rnd = lmer(pain ~ age + sex + STAI_trait + pain_cat + mindfulness + 
+                 cortisol_saliva + (1|hospital), data = paindata3)
+
+sum(residuals(mod_fixed)^2)
+sum(residuals(mod_rnd)^2)
+cAIC(mod_rnd)$caic
+summary(mod_rnd)
+anova(mod_rnd, mod_fixed )
+
+r2beta(mod_fixed, method = "nsj", data = paindata3)
+coef_table(mod_fixed)
+
+r.squaredGLMM(mod_rnd)
+
+confint(mod_rnd)
+
+stdCoef.merMod(mod_rnd)
+
+##Doing the predictions for data4
+paindata3 = paindata3 %>% 
+  mutate(pred_rng = predict(mod_rnd),
+         pred_slope = predict(betterslope))
+
+predictmod <- lmer(mod_rnd, paindata4)
+summary(predictmod)
+
+RAD = sum(abs(paindata4$pain - predict(predictmod)))
+RAD
+
+RSS = sum ((paindata4$pain - predict(predictmod))^2)
+RSS
+
+mod_mean <- lm(pain ~ 1, data = paindata4)
+TSS = sum((paindata4$pain - predict(mod_mean))^2)
+
+R2 = 1-(RSS/TSS)
+R2
+
+##Last bit with a new model##
+finalmod = lm(pain ~ cortisol_saliva, data = paindata3)
+
+mod_rnd_slope = lmer(pain ~ cortisol_saliva + (cortisol_saliva|hospital), data = paindata3)
+betterslope =  lmer(pain ~ cortisol_saliva + (cortisol_saliva|hospital),control = lmerControl(optimizer = "Nelder_Mead"), data = paindata3)
+
+paindata3 %>% 
+  ggplot()+
+  aes(y = pain, x = cortisol_saliva, group = "hospital") + 
+  geom_point() + 
+  geom_line(aes(y = pred_slope, x = cortisol_saliva, color = "red")) + 
+  facet_wrap( ~ hospital, ncol = 2) + 
+  options(windows())
